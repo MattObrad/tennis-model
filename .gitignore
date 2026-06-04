@@ -1,0 +1,20 @@
+# Credentials — never commit
+.env
+
+# Large data files — download via collect_tennis.py or collect_tennis_vps.py
+data/tennis.db
+data/raw/
+
+# Runtime artifacts
+logs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Calibration pickle is tracked (small, useful to version)
+# data/calibration_tennis.pkl  <-- intentionally NOT ignored
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,40 @@
+{
+  "_comment": "ITF Women tennis prediction model — paper mode active, build backtest before enabling alerts",
+  "model": {
+    "name": "elo_v1.0",
+    "version": "1.0",
+    "k_factor": 32,
+    "starting_elo": 1500,
+    "elo_formula_scale": 400,
+    "surface_weight": 1.0,
+    "min_matches_for_surface_elo": 5
+  },
+  "betting": {
+    "paper_mode": true,
+    "min_edge": 0.08,
+    "min_model_prob": 0.55,
+    "min_career_matches": 10,
+    "max_odds_american": 300
+  },
+  "data": {
+    "db_path": "data/tennis.db",
+    "alerts_db_path": "D:/models/alerts.db",
+    "sackmann_start_year": 2015,
+    "train_cutoff": "2022-12-31",
+    "validate_start": "2023-01-01",
+    "validate_end":   "2024-12-31",
+    "holdout_start":  "2025-01-01"
+  },
+  "vps": {
+    "host": "198.199.77.143",
+    "port": 5432,
+    "database": "picksdb",
+    "user": "picksuser",
+    "password_env": "VPS_DB_PASSWORD"
+  },
+  "deploy": {
+    "host": "198.199.77.143",
+    "user": "picks",
+    "remote_dir": "/home/picks/tennis/"
+  }
+}

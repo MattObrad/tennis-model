@@ -1,0 +1,41 @@
+{
+  "_comment": "VPS-side config for ITF Women tennis model. Deployed as /home/picks/tennis_config.json",
+  "_diff_from_local": "db_path and alerts_db_path point to VPS filesystem; vps.host is localhost",
+  "model": {
+    "name": "elo_v1.0",
+    "version": "1.0",
+    "k_factor": 32,
+    "starting_elo": 1500,
+    "elo_formula_scale": 400,
+    "surface_weight": 1.0,
+    "min_matches_for_surface_elo": 5
+  },
+  "betting": {
+    "paper_mode": true,
+    "min_edge": 0.08,
+    "min_model_prob": 0.55,
+    "min_career_matches": 10,
+    "max_odds_american": 300
+  },
+  "data": {
+    "db_path": "/home/picks/tennis.db",
+    "alerts_db_path": "/home/picks/alerts.db",
+    "sackmann_start_year": 2015,
+    "train_cutoff": "2022-12-31",
+    "validate_start": "2023-01-01",
+    "validate_end":   "2024-12-31",
+    "holdout_start":  "2025-01-01"
+  },
+  "vps": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "picksdb",
+    "user": "picksuser",
+    "password_env": "VPS_DB_PASSWORD"
+  },
+  "deploy": {
+    "host": "198.199.77.143",
+    "user": "picks",
+    "remote_dir": "/home/picks"
+  }
+}

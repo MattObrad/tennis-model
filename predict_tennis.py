@@ -277,6 +277,7 @@ def fetch_itf_props(pg_conn, target_date: str) -> list[RawSide]:
           AND  ps.line         IS NULL
           AND  ps.over_odds    IS NOT NULL
           AND  g.game_time::date = %(dt)s::date
+          AND  g.game_time      > NOW() - INTERVAL '30 minutes'
         ORDER  BY ps.event_id, ps.player_name, ps.snapshot_time DESC
         """,
         {"dt": target_date},
@@ -371,9 +372,16 @@ def predict_match(
                       and elo2["matches_played"] >= min_career)
 
     extreme_flag = abs(alert_edge) > 0.20
+
+    # EV gate: a negative-EV bet loses money in expectation regardless of edge.
+    # ev = model_prob * decimal_odds - 1 (already computed correctly in write paths).
+    alert_dec = american_to_decimal(alert_odds)
+    alert_ev  = alert_prob * alert_dec - 1.0
+
     qualifies    = (alert_edge >= min_edge
                     and alert_prob >= min_prob
-                    and enough_history)
+                    and enough_history
+                    and alert_ev > 0.0)
 
     return Prediction(
         event_id       = p1.event_id,

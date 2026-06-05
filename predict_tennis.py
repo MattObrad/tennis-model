@@ -347,6 +347,15 @@ def predict_match(
     # Two-way de-vig
     fair_p1, fair_p2, overround = devig(p1.over_odds, p2.over_odds)
 
+    # Guard: overround < 1.0 means the two-way market sums to < 100% implied —
+    # de-vig would inflate both probabilities above the raw price, creating fake edges.
+    # This usually indicates a data error or an in-play market that's partially settled.
+    if overround < 1.0:
+        log.warning(
+            "Sub-100%% overround (%.3f) for %s vs %s — skipping (data error or settled market).",
+            overround, p1.player_name, p2.player_name,
+        )
+
     # Edges
     edge1 = p1_prob - fair_p1
     edge2 = p2_prob - fair_p2
@@ -384,7 +393,8 @@ def predict_match(
                     and enough_history
                     and alert_ev > 0.0
                     and abs(alert_odds) <= max_odds
-                    and not extreme_flag)
+                    and not extreme_flag
+                    and overround >= 1.0)
 
     return Prediction(
         event_id       = p1.event_id,

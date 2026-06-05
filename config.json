@@ -1,5 +1,6 @@
 {
-  "_comment": "ITF Women tennis prediction model — paper mode active, build backtest before enabling alerts",
+  "_comment": "VPS-side config for ITF Women tennis model. Deployed as /home/picks/tennis_config.json",
+  "_diff_from_local": "db_path and alerts_db_path point to VPS filesystem; vps.host is localhost",
   "model": {
     "name": "elo_v1.0",
     "version": "1.0",
@@ -17,8 +18,8 @@
     "max_odds_american": 300
   },
   "data": {
-    "db_path": "data/tennis.db",
-    "alerts_db_path": "D:/models/alerts.db",
+    "db_path": "/home/picks/tennis.db",
+    "alerts_db_path": "/home/picks/alerts.db",
     "sackmann_start_year": 2015,
     "train_cutoff": "2022-12-31",
     "validate_start": "2023-01-01",
@@ -26,7 +27,7 @@
     "holdout_start":  "2025-01-01"
   },
   "vps": {
-    "host": "198.199.77.143",
+    "host": "localhost",
     "port": 5432,
     "database": "picksdb",
     "user": "picksuser",
@@ -35,6 +36,6 @@
   "deploy": {
     "host": "198.199.77.143",
     "user": "picks",
-    "remote_dir": "/home/picks/tennis/"
+    "remote_dir": "/home/picks"
   }
 }

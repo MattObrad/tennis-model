@@ -34,7 +34,7 @@ import sqlite3
 import sys
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Optional
@@ -378,10 +378,13 @@ def predict_match(
     alert_dec = american_to_decimal(alert_odds)
     alert_ev  = alert_prob * alert_dec - 1.0
 
+    max_odds     = config["betting"].get("max_odds_american", 300)
     qualifies    = (alert_edge >= min_edge
                     and alert_prob >= min_prob
                     and enough_history
-                    and alert_ev > 0.0)
+                    and alert_ev > 0.0
+                    and abs(alert_odds) <= max_odds
+                    and not extreme_flag)
 
     return Prediction(
         event_id       = p1.event_id,
@@ -604,7 +607,11 @@ def write_unified_alerts(
 
 
 def mark_notified(
-    elo_conn: sqlite3.Connection, event_id: str, prediction_date: str
+    elo_conn: sqlite3.Connection,
+    event_id: str,
+    prediction_date: str,
+    alerts_conn: Optional[sqlite3.Connection] = None,
+    player_name: str = "",
 ) -> None:
     ts = datetime.utcnow().isoformat()
     elo_conn.execute(
@@ -613,6 +620,13 @@ def mark_notified(
         (ts, event_id, prediction_date),
     )
     elo_conn.commit()
+    if alerts_conn and player_name:
+        alerts_conn.execute(
+            "UPDATE bet_alerts SET notified=1, notified_at=? "
+            "WHERE sport='TENNIS' AND game_id=? AND player_name=?",
+            (ts, event_id, player_name),
+        )
+        alerts_conn.commit()
 
 
 def was_notified(
@@ -729,10 +743,14 @@ def main() -> int:
         for a in sorted(alerts, key=lambda x: -x.alert_edge):
             if not was_notified(elo_conn, a.event_id, target_date):
                 opp = a.p2_kambi if a.alert_player == a.p1_kambi else a.p1_kambi
+                # Convert UTC game_time to CT (CDT = UTC-5 in summer)
+                try:
+                    ct_str = (a.game_time - timedelta(hours=5)).strftime("%-I:%M %p CT")
+                except Exception:
+                    ct_str = ""
                 sent = send_tennis_alert({
                     "player_name":   a.alert_player,
                     "opponent_name": opp,
-                    "surface":       "Unknown",
                     "tourney_name":  "ITF Women",
                     "model_prob":    a.alert_prob,
                     "fair_prob":     a.alert_fair,
@@ -740,9 +758,12 @@ def main() -> int:
                     "odds":          a.alert_odds,
                     "event_id":      a.event_id,
                     "extreme_flag":  a.extreme_flag,
+                    "game_time_ct":  ct_str,
                 }, config)
                 if sent:
-                    mark_notified(elo_conn, a.event_id, target_date)
+                    mark_notified(elo_conn, a.event_id, target_date,
+                                  alerts_conn=alerts_conn,
+                                  player_name=a.alert_player)
     elif alerts and paper_mode and not args.dry_run:
         log.info("[PAPER MODE] %d alert(s) not sent to Discord.", len(alerts))
 

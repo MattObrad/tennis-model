@@ -13,7 +13,7 @@
   "betting": {
     "paper_mode": true,
     "min_edge": 0.08,
-    "min_model_prob": 0.55,
+    "min_model_prob": 0.70,
     "min_career_matches": 10,
     "max_odds_american": 300
   },

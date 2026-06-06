@@ -255,6 +255,14 @@ def main() -> int:
     if inserted == 0:
         log.info("No new matches -- Elo ratings are already current.")
     elif not args.skip_elo:
+        # Clean up any TE- scraper rows now covered by Sackmann before rebuilding Elo
+        try:
+            from scrape_itf_results import cleanup_te_rows
+            deleted = cleanup_te_rows(conn)
+            if deleted:
+                log.info("Removed %d TE- scraper rows now covered by Sackmann.", deleted)
+        except ImportError:
+            pass  # scrape_itf_results.py not deployed yet — skip silently
         rebuild_elo(conn)
     else:
         log.info("--skip-elo set -- Elo rebuild deferred.")

@@ -11,9 +11,9 @@
     "min_matches_for_surface_elo": 5
   },
   "betting": {
-    "paper_mode": true,
+    "paper_mode": false,
     "min_edge": 0.08,
-    "min_model_prob": 0.55,
+    "min_model_prob": 0.70,
     "min_career_matches": 10,
     "max_odds_american": 300
   },

@@ -636,9 +636,32 @@ def main(argv=None) -> int:
     if total_graded > 0 and not args.dry_run:
         webhook = os.environ.get("DISCORD_WEBHOOK_RESULTS", "").strip()
         if webhook:
+            # Dedup guard: prevent double Discord posts when morning + evening
+            # crons overlap, or on manual re-runs of the same date.
+            # Stored in alerts.db _collector_state; --date flag bypasses dedup
+            # so a deliberate re-run (e.g. backfill) always re-sends.
+            alerts_conn.execute(
+                "CREATE TABLE IF NOT EXISTS _collector_state "
+                "(key TEXT PRIMARY KEY, value TEXT)"
+            )
+            alerts_conn.commit()
+            _manual = args.date is not None
             for d in dates:
+                _dedup_key = f"results_discord_sent:TENNIS:{d}"
+                already = (not _manual) and bool(alerts_conn.execute(
+                    "SELECT 1 FROM _collector_state WHERE key = ?",
+                    (_dedup_key,),
+                ).fetchone())
+                if already:
+                    log.info("Discord already sent for TENNIS %s — skipping duplicate.", d)
+                    continue
                 _post_tennis_results_embed(alerts_conn, tennis_conn, webhook, d)
                 _post_tennis_summary_embed(alerts_conn, webhook, d)
+                alerts_conn.execute(
+                    "INSERT OR REPLACE INTO _collector_state (key, value) VALUES (?, ?)",
+                    (_dedup_key, "1"),
+                )
+                alerts_conn.commit()
 
     alerts_conn.close()
     if tennis_conn: tennis_conn.close()

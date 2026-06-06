@@ -601,13 +601,14 @@ def write_unified_alerts(
                     game_id, player_name, market_type, direction, line,
                     odds, predicted_value, model_prob, implied_prob,
                     edge_prob, ev, kelly_half, result, notified, graded
-                ) VALUES (?,?,?,?,?,?,?,?,NULL,?,NULL,?,?,?,?,?,?,0,0)
+                ) VALUES (?,?,?,?,?,?,?,?,NULL,?,?,?,?,?,?,?,?,0,0)
                 """,
                 (
                     "TENNIS", model_version,
                     now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"),
                     p.event_id, p.alert_player, "Match Winner", "WIN",
                     p.alert_odds,
+                    p.alert_prob,                   # predicted_value = model prob
                     p.alert_prob, p.alert_fair, p.alert_edge,
                     ev, kelly_h,
                     "PENDING",

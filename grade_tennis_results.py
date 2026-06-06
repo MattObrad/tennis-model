@@ -68,6 +68,46 @@ def _norm(name: str) -> str:
     return "".join(c for c in nfd if not unicodedata.combining(c)).strip()
 
 
+def _names_match(stored: str, lookup: str) -> bool:
+    """
+    Flexible name comparison that handles two real-world mismatches between
+    tennisexplorer-scraped rows and Kambi/Sackmann full names:
+
+    1. Hyphens:  "Diana Ioana Simionescu"  <-> "Diana-Ioana Simionescu"
+                 "Alexia Shara Iancu"      <-> "Alexia-Shara Iancu"
+
+    2. Abbreviated "Last I." / "Multi-Last I." vs full "First Last":
+                 "Scott K."           <-> "Katrina Scott"
+                 "Tikhonova A."       <-> "Anastasia Tikhonova"
+                 "Wang J."            <-> "Jiaqi Wang"
+                 "John-Baptiste L."   <-> "Lauryn John-Baptiste"
+    """
+    def clean(s: str) -> str:
+        # strip accents, lower-case, collapse hyphens to spaces, drop dots
+        return _norm(s).replace("-", " ").replace(".", "").strip()
+
+    sc = clean(stored)
+    lc = clean(lookup)
+
+    # Case 1: exact after cleaning (covers accent + hyphen variants)
+    if sc == lc:
+        return True
+
+    # Case 2: abbreviated "Last [Multi ]I" -> "First [Multi ]Last"
+    # The abbreviated form ends with a single character (the first-name initial).
+    sp = sc.split()
+    lp = lc.split()
+    if len(sp) >= 2 and len(sp[-1]) == 1 and len(lp) >= 2:
+        abbr_last    = " ".join(sp[:-1])   # e.g. "scott" or "john baptiste"
+        abbr_initial = sp[-1]              # e.g. "k"
+        full_last    = " ".join(lp[1:])    # everything after the first word
+        full_initial = lp[0][0]            # first letter of the first word
+        if abbr_last == full_last and abbr_initial == full_initial:
+            return True
+
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Odds helpers
 # ---------------------------------------------------------------------------
@@ -288,24 +328,25 @@ def _get_match_result(
         return None
     _, _, opponent_name, _, _ = pred
 
-    # Step 2: search matches within ±MATCH_WINDOW_DAYS filtered by both players
-    lo = (datetime.fromisoformat(alert_date) - timedelta(days=MATCH_WINDOW_DAYS)).date().isoformat()
-    hi = (datetime.fromisoformat(alert_date) + timedelta(days=MATCH_WINDOW_DAYS)).date().isoformat()
-
+    # Step 2: search matches using a -1/+2 day window around alert_date.
+    # tourney_date for scraped (tennisexplorer) rows = the date results were
+    # posted, which is often 1-2 days after the match was played.  Sackmann
+    # rows use the Monday tournament-start date, so the ±2-day asymmetry
+    # (back 1, forward 2) handles both same-day, next-day, and occasional
+    # 2-day posting delays without pulling in unrelated tournament weeks.
+    # Player name is NOT pre-filtered in SQL because scraped rows may store
+    # abbreviated forms ("Scott K." for "Katrina Scott"); _names_match()
+    # handles both exact, abbreviated, and hyphen variants in Python.
     rows = tennis_conn.execute(
-        "SELECT winner_name, loser_name FROM matches WHERE tourney_date BETWEEN ? AND ?",
-        (lo, hi),
+        """SELECT winner_name, loser_name FROM matches
+           WHERE tourney_date BETWEEN date(?, '-1 day') AND date(?, '+2 days')""",
+        (alert_date, alert_date),
     ).fetchall()
 
-    norm_p   = _norm(player_name)
-    norm_opp = _norm(opponent_name)
-
     for winner, loser in rows:
-        w_norm = _norm(winner)
-        l_norm = _norm(loser)
-        if w_norm == norm_p and l_norm == norm_opp:
+        if _names_match(winner, player_name) and _names_match(loser, opponent_name):
             return "WIN"
-        if l_norm == norm_p and w_norm == norm_opp:
+        if _names_match(loser, player_name) and _names_match(winner, opponent_name):
             return "LOSS"
 
     return None
@@ -442,7 +483,8 @@ def _post_tennis_results_embed(
             )
             continue
 
-        line1 = f"{emoji} {pname} -- {outcome} {pnl}"
+        odds_s = f" @ {int(r['odds']):+d}" if r["odds"] is not None else ""
+        line1  = f"{emoji} {pname} -- {outcome} {pnl}{odds_s}"
         opp_s = f"vs {opp_name}  |  ITF Women" if opp_name else "ITF Women"
         elo_s = (f"Elo: {p_elo:.0f} vs {opp_elo:.0f}  |  "
                  if p_elo and opp_elo else "")
@@ -472,6 +514,54 @@ def _post_tennis_results_embed(
             "footer":      {"text": "ObServatory Tennis Model"},
         }]})
         log.info("Discord tennis results embed sent for %s%s.", date_et, suffix)
+
+
+def _post_tennis_summary_embed(
+    alerts_conn: sqlite3.Connection,
+    webhook: str,
+    date_et: str,
+) -> None:
+    """One-line aggregate embed posted after the per-bet chunks."""
+    rows = alerts_conn.execute(
+        """SELECT result, profit_units, clv
+           FROM bet_alerts
+           WHERE sport = 'TENNIS' AND alert_date = ?
+             AND result IN ('WIN', 'LOSS', 'PUSH', 'PENDING')""",
+        (date_et,),
+    ).fetchall()
+
+    if not rows:
+        return
+
+    resolved = [r for r in rows if r["result"] != "PENDING"]
+    pending  = [r for r in rows if r["result"] == "PENDING"]
+
+    wins   = sum(1 for r in resolved if r["result"] == "WIN")
+    losses = sum(1 for r in resolved if r["result"] == "LOSS")
+    net    = sum((r["profit_units"] or 0.0) for r in resolved)
+    clvs   = [float(r["clv"]) * 100 for r in resolved if r["clv"] is not None]
+    avg_clv_s = f" | Avg CLV: {sum(clvs)/len(clvs):+.1f}pp" if clvs else ""
+
+    # "2026-06-04" -> "June 4"
+    try:
+        dt = datetime.fromisoformat(date_et)
+        date_display = f"{dt.strftime('%B')} {dt.day}"
+    except ValueError:
+        date_display = date_et
+
+    record = f"{wins}W-{losses}L | {net:+.1f}u{avg_clv_s}"
+    desc_parts = [record]
+    if pending:
+        desc_parts.append(f"{len(pending)} bets still pending")
+
+    color = _COLOR_WIN if net >= 0 else _COLOR_LOSS
+    _discord_post(webhook, {"embeds": [{
+        "title":       f"Tennis Results -- {date_display}",
+        "color":       color,
+        "description": "\n".join(desc_parts),
+        "footer":      {"text": "ObServatory Tennis Model"},
+    }]})
+    log.info("Discord tennis summary embed sent for %s.", date_et)
 
 
 # ---------------------------------------------------------------------------
@@ -548,6 +638,7 @@ def main(argv=None) -> int:
         if webhook:
             for d in dates:
                 _post_tennis_results_embed(alerts_conn, tennis_conn, webhook, d)
+                _post_tennis_summary_embed(alerts_conn, webhook, d)
 
     alerts_conn.close()
     if tennis_conn: tennis_conn.close()

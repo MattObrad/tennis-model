@@ -459,8 +459,8 @@ def _post_tennis_results_embed(
 
     lines = []
     for r in resolved + pending:
-        emoji   = {"WIN": "[WIN]", "LOSS": "[LOSS]", "PUSH": "[PUSH]"}.get(r["result"], "[PEND]")
-        outcome = {"WIN": "WON",   "LOSS": "LOST",   "PUSH": "PUSH"}.get(r["result"], "PENDING")
+        emoji   = {"WIN": "✅", "LOSS": "❌", "PUSH": "🔄"}.get(r["result"], "⏳")
+        outcome = {"WIN": "WON", "LOSS": "LOST", "PUSH": "PUSH"}.get(r["result"], "PENDING")
         pname   = r["player_name"]
         pnl     = f"{r['profit_units']:+.2f}u" if r["profit_units"] is not None else ""
 
@@ -478,28 +478,41 @@ def _post_tennis_results_embed(
 
         if r["result"] == "PENDING":
             lines.append(
-                f"[PEND] {pname} vs {opp_name} -- PENDING" if opp_name
-                else f"[PEND] {pname} -- PENDING"
+                f"⏳ {pname} vs {opp_name} — PENDING" if opp_name
+                else f"⏳ {pname} — PENDING"
             )
             continue
 
-        odds_s = f" @ {int(r['odds']):+d}" if r["odds"] is not None else ""
-        line1  = f"{emoji} {pname} -- {outcome} {pnl}{odds_s}"
-        opp_s = f"vs {opp_name}  |  ITF Women" if opp_name else "ITF Women"
-        elo_s = (f"Elo: {p_elo:.0f} vs {opp_elo:.0f}  |  "
-                 if p_elo and opp_elo else "")
-        prob_s = (f"Our P: {mp*100:.0f}%  |  Market: {fp*100:.0f}%"
-                  if mp and fp else "")
-        clv_s = (f"  |  CLV: {float(r['clv'])*100:+.2f}pp"
-                 if r["clv"] is not None else "")
-        line3 = f"{elo_s}{prob_s}{clv_s}"
-        lines.append(f"{line1}\n{opp_s}" + (f"\n{line3}" if line3.strip() else ""))
+        odds_s   = f" @ {int(r['odds']):+d}" if r["odds"] is not None else ""
+        line1    = f"{emoji} {pname} — {outcome} {pnl}{odds_s}"
+        opp_s    = f"vs {opp_name} | ITF Women" if opp_name else "ITF Women"
+        elo_s    = (f"Elo: {p_elo:.0f} vs {opp_elo:.0f} | "
+                    if p_elo and opp_elo else "")
+        prob_s   = (f"Our P: {mp*100:.0f}% vs Market: {fp*100:.0f}%"
+                    if mp and fp else "")
+        detail_s = f"{elo_s}{prob_s}"
+        clv_val  = (f"CLV: {float(r['clv'])*100:+.2f}pp"
+                    if r["clv"] is not None else "")
+
+        block = f"{line1}\n{opp_s}"
+        if detail_s.strip():
+            block += f"\n{detail_s}"
+        if clv_val:
+            block += f"\n{clv_val}"
+        lines.append(block)
 
     wins   = sum(1 for r in resolved if r["result"] == "WIN")
     losses = sum(1 for r in resolved if r["result"] == "LOSS")
     clvs   = [float(r["clv"]) * 100 for r in resolved if r["clv"] is not None]
     avg_clv_s = f"CLV: {sum(clvs)/len(clvs):+.2f}pp  |  " if clvs else ""
-    stat = f"[CHART] {wins}-{losses} | {net:+.2f}u  |  {avg_clv_s}ObServatory Tennis Model"
+    stat = f"📊 {wins}-{losses} | {net:+.2f}u  |  {avg_clv_s}ObServatory Tennis Model"
+
+    # "2026-06-11" → "June 11"
+    try:
+        _dt = datetime.fromisoformat(date_et)
+        date_display = f"{_dt.strftime('%B')} {_dt.day}"
+    except ValueError:
+        date_display = date_et
 
     CHUNK = 4
     chunks = [lines[i:i+CHUNK] for i in range(0, max(len(lines), 1), CHUNK)]
@@ -508,7 +521,7 @@ def _post_tennis_results_embed(
         suffix = f" ({idx+1}/{n})" if n > 1 else ""
         desc   = "\n\n".join(chunk) + f"\n\n{stat}"
         _discord_post(webhook, {"embeds": [{
-            "title":       f"🎾 Tennis Results -- {date_et}{suffix}",
+            "title":       f"🎾 Tennis Results — {date_display}{suffix}",
             "color":       color,
             "description": desc,
             "footer":      {"text": "ObServatory Tennis Model"},
@@ -556,7 +569,7 @@ def _post_tennis_summary_embed(
 
     color = _COLOR_WIN if net >= 0 else _COLOR_LOSS
     _discord_post(webhook, {"embeds": [{
-        "title":       f"Tennis Results -- {date_display}",
+        "title":       f"🎾 Tennis Results — {date_display}",
         "color":       color,
         "description": "\n".join(desc_parts),
         "footer":      {"text": "ObServatory Tennis Model"},

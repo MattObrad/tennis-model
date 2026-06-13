@@ -48,52 +48,45 @@ def send_tennis_alert(alert: dict, config: dict) -> bool:
     """
     Send one match-winner edge alert to Discord.
 
-    alert dict keys (all required):
-        player_name, opponent_name, surface, tourney_name,
+    alert dict keys:
+        player_name, opponent_name, tourney_name,
         model_prob, fair_prob, edge, odds (American int),
-        event_id, extreme_flag (bool)
+        event_id, extreme_flag (bool), game_time_ct (str, optional)
     """
     webhook  = os.environ.get("DISCORD_WEBHOOK_TENNIS", "").strip()
     player   = alert.get("player_name",   "Player")
     opponent = alert.get("opponent_name", "Opponent")
-    surface  = alert.get("surface",       "Unknown")
     tourney  = alert.get("tourney_name",  "ITF Women")
     prob     = alert.get("model_prob",    0.0)
     fair     = alert.get("fair_prob",     0.0)
     edge     = alert.get("edge",          0.0)
     odds     = alert.get("odds",          0)
     extreme  = alert.get("extreme_flag",  False)
+    gt_ct    = alert.get("game_time_ct",  "")
 
     title = "🎾 Tennis Edge Alert"
     if extreme:
-        title += "  ⚠️ !EXTREME"
+        title += "  ⚠️ EXTREME"
 
-    # Decimal odds from American
-    if odds < 0:
-        decimal_odds = 1.0 + 100.0 / abs(odds)
-    else:
-        decimal_odds = 1.0 + odds / 100.0
+    odds_str = f"{odds:+d}" if odds else ""
 
-    ev = prob * decimal_odds - 1.0
+    # "1:00 PM CT | ITF Women"  or just "ITF Women" if no game time
+    context_line = f"{gt_ct} | {tourney}" if gt_ct else tourney
+
+    desc = (
+        f"**BET: {player} ({odds_str})**\n"
+        f"vs {opponent}\n"
+        f"{context_line}\n\n"
+        f"Our P: {prob*100:.0f}%  |  Market: {fair*100:.0f}%  |  Edge: +{edge*100:.0f}%"
+    )
 
     payload = {
         "embeds": [{
-            "title":  title,
-            "color":  _COLOR_TENNIS,
-            "fields": [
-                {"name": "Player",          "value": player,                        "inline": True},
-                {"name": "Opponent",        "value": opponent,                      "inline": True},
-                {"name": "Surface",         "value": surface,                       "inline": True},
-                {"name": "Predicted Win%",  "value": f"{prob*100:.1f}%",            "inline": True},
-                {"name": "Market Implied%", "value": f"{fair*100:.1f}%",            "inline": True},
-                {"name": "Edge",            "value": f"+{edge*100:.1f}%",           "inline": True},
-                {"name": "Odds",            "value": f"{odds:+d}",                  "inline": True},
-                {"name": "Decimal",         "value": f"{decimal_odds:.2f}x",        "inline": True},
-                {"name": "EV",              "value": f"{ev*100:+.1f}%",             "inline": True},
-                {"name": "Tournament",      "value": tourney,                       "inline": False},
-            ],
-            "footer":    {"text": _FOOTER},
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "title":       title,
+            "description": desc,
+            "color":       _COLOR_TENNIS,
+            "footer":      {"text": _FOOTER},
+            "timestamp":   datetime.utcnow().isoformat() + "Z",
         }]
     }
 
